@@ -1,0 +1,124 @@
+**Script1**
+
+#!/usr/bin/env bash
+set -euo pipefail
+
+MAP="barcode_sample_identifiers.tsv"
+
+while IFS=$'\t' read -r barcode_combo sample_id
+do
+  mv "${barcode_combo}.1.fastq" "${sample_id}_R1.fastq"
+  mv "${barcode_combo}.2.fastq" "${sample_id}_R2.fastq"
+done < "$MAP"
+
+rm -f Golay*.fastq
+
+
+**Script2 Restriction Enzyme Digest**
+#(Restriction enzyme digestion loop using VSEARCH)
+#!/usr/bin/env bash
+
+genome=$1
+outdir=$2
+
+mkdir -p "$outdir"
+
+for enzyme in EcoRI BamHI PstI AluI
+do
+if [ "$enzyme" == "EcoRI" ]; then pattern="G^AATTC"; fi
+if [ "$enzyme" == "BamHI" ]; then pattern="G^GATCC"; fi
+if [ "$enzyme" == "PstI" ]; then pattern="CTGCA^G"; fi
+if [ "$enzyme" == "AluI" ]; then pattern="AG^CT"; fi
+
+echo "Applying ${enzyme} cuts to genome"
+
+vsearch --cut "${genome}" --cut_pattern "${pattern}" \
+  --fastaout "${outdir}/${enzyme}_processed_genome.fna"
+
+echo "${enzyme} digestion completed"
+
+done
+
+**Script3**
+#(Restriction digest + summary table)
+
+#!/usr/bin/env bash
+
+genome=$1
+outdir=$2
+
+mkdir -p "$outdir"
+
+genome_name=$(echo "$genome" | sed 's/.*/\//g' | cut -d'.' -f1)
+
+summary="${outdir}/restriction_summary.tsv"
+echo -e "enzyme\t${genome_name}" > "$summary"
+
+for enzyme in EcoRI BamHI PstI AluI
+do
+if [ "$enzyme" == "EcoRI" ]; then pattern="G^AATTC"; fi
+if [ "$enzyme" == "BamHI" ]; then pattern="G^GATCC"; fi
+if [ "$enzyme" == "PstI" ]; then pattern="CTGCA^G"; fi
+if [ "$enzyme" == "AluI" ]; then pattern="AG^CT"; fi
+
+echo "Running ${enzyme} digestion..."
+
+vsearch --cut "${genome}" --cut_pattern "${pattern}" \
+  --fastaout "${outdir}/${enzyme}_processed_genome.fna" \
+  2> temp_output.txt
+
+cuts=$(awk '/cut [0-9]+ times/ {print $4}' temp_output.txt)
+
+echo -e "${enzyme}\t${cuts}" >> "$summary"
+done
+
+echo "Summary table written to ${summary}"
+cat "$summary"
+
+rm temp_output.txt
+
+
+
+
+**Script4**
+#FASTQ statistics generation
+
+#!/usr/bin/env bash
+
+echo -e "filename\tnumber_of_seqs\tnumber_of_bases\tavg_length\tN50\tGC_content" > seq_stats.tsv
+
+for i in sample*_R*.fastq
+do
+seqkit stats -a -T "$i" | sed '1d' | awk '{print $1"\t"$4"\t"$5"\t"$7"\t"$13"\t"$18}' >> seq_stats.tsv
+done
+
+cat seq_stats.tsv
+
+
+
+**Script5**
+#Simple genome download loop
+
+#!/usr/bin/env bash
+
+for i in $(cat fructo_accessions.txt)
+do
+datasets download genome accession $i --filename ${i}.zip
+done
+
+
+**Script6**
+#fastANI formatting
+
+#!/usr/bin/env bash
+
+echo -e "genome_query\tgenome_reference\tANI" > fructo_fastani_summary.tsv
+
+awk '{print $1"\t"$2"\t"$3}' fructo_fastani_results.tsv \
+| sed 's/\.fna//g' \
+| sed 's/_genomic//g' \
+| sed 's/fructo_genomes_only\///g' \
+>> fructo_fastani_summary.tsv
+
+cat fructo_fastani_summary.tsv
+
