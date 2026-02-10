@@ -111,8 +111,13 @@ bash RE_digest_summary.sh genome.fna RE_cuts
 
 #Example output:
 enzyme  GCF_001077535
+
 EcoRI   78
+
 BamHI   15
+
 PstI    258
+
 AluI    17691
+
 
